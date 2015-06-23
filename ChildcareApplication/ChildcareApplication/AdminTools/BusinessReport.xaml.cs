@@ -177,17 +177,89 @@ namespace AdminTools {
         private void LoadReport(string startDate, string endDate) {
             ReportsDB reportsDB = new ReportsDB();
             DataTable table = reportsDB.GetBusinessReportTable(startDate, endDate);
-            AddTotalsColumn(table);
-            this.table = table;
+            DataTable formattedTable = FormatTable(table);
+            
+            AddTotalsColumn(formattedTable);
+            this.table = formattedTable;
 
-            businessDataGrid.ItemsSource = table.DefaultView;
+            businessDataGrid.ItemsSource = formattedTable.DefaultView;
 
             this.reportLoaded = true;
         }
 
+        private DataTable FormatTable(DataTable table) {
+            bool regReported = false;
+            bool campReported = false;
+            string oldFamily = "";
+
+            DataTable formattedTable = new DataTable();
+            formattedTable.Columns.Add("ID", typeof(string));
+            formattedTable.Columns.Add("First Name", typeof(string));
+            formattedTable.Columns.Add("Last Name", typeof(string));
+            formattedTable.Columns.Add("Event Name", typeof(string));
+            formattedTable.Columns.Add("Charges", typeof(string));
+
+            for (int i = 0; i < table.Rows.Count; i++) {
+                if(table.Rows[i][0].ToString().Remove(5) != oldFamily) {
+                    campReported = false;
+                    regReported = false;
+                    oldFamily = table.Rows[i][0].ToString().Remove(5);
+                }
+                if(IsRegular(table.Rows[i][3].ToString()) && !regReported) {
+                    regReported = true;
+                    formattedTable.Rows.Add(table.Rows[i][0].ToString(),
+                                            table.Rows[i][1].ToString(),
+                                            table.Rows[i][2].ToString(),
+                                            "Regular Childcare",
+                                            SumRegularCare(table, oldFamily));
+                } else if (table.Rows[i][3].ToString().ToLower().Contains("camp") && !campReported) {
+                    campReported = true;
+                    formattedTable.Rows.Add(table.Rows[i][0].ToString(),
+                                            table.Rows[i][1].ToString(),
+                                            table.Rows[i][2].ToString(),
+                                            "Camp",
+                                            SumCamp(table, oldFamily));
+                } else if(IsMisc(table.Rows[i][3].ToString())) {
+                    formattedTable.Rows.Add(table.Rows[i][0].ToString(),
+                                            table.Rows[i][1].ToString(),
+                                            table.Rows[i][2].ToString(),
+                                            table.Rows[i][3].ToString(),
+                                            table.Rows[i][4].ToString());
+                }
+            }
+
+            return formattedTable;
+        }
+
+        private string SumRegularCare(DataTable table, string familyID) {
+            string total = "$";
+            double totalNum = 0;
+
+            for (int i = 0; i < table.Rows.Count; i++) {
+                if (table.Rows[i][0].ToString().Remove(5) == familyID && IsRegular(table.Rows[i][3].ToString())) {
+                    totalNum += Convert.ToDouble(table.Rows[i][4].ToString().Substring(1));
+                }
+            }
+            total += totalNum;
+            return total;
+        }
+
+        private string SumCamp(DataTable table, string familyID) {
+            string total = "$";
+            double totalNum = 0;
+
+            for (int i = 0; i < table.Rows.Count; i++) {
+                if (table.Rows[i][0].ToString().Remove(5) == familyID && table.Rows[i][3].ToString().ToLower().Contains("camp")) {
+                    totalNum += Convert.ToDouble(table.Rows[i][4].ToString().Substring(1));
+                }
+            }
+            total += totalNum;
+            return total;
+        }
+
         private void AddTotalsColumn(DataTable table) {
             GuardianInfoDB gDB = new GuardianInfoDB();
-            table.Columns.Add("Totals", typeof(string));
+            table.Columns.Add("Current Due", typeof(string));
             if (table.Rows.Count > 1) {
                 string id = "";
                 bool campTotalDisplayed = false;
@@ -220,6 +292,10 @@ namespace AdminTools {
 
         private bool IsRegular(string eventName) {
             return (eventName == "Regular Childcare" || eventName == "Infant Childcare" || eventName == "Adolescent Childcare");
+        }
+
+        private bool IsMisc(string eventName) {
+            return !(IsRegular(eventName) || eventName.ToLower().Contains("camp"));
         }
 
         private void btn_Exit_Click(object sender, RoutedEventArgs e) {

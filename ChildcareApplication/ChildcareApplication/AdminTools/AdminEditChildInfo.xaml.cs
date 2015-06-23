@@ -260,7 +260,7 @@ namespace AdminTools {
             string mID = string.Format("{0:000000}", maxID);
 
             Image i; //string test = "C:/Users/Public/Documents";
-            i = buildImage("C:/Users/Public/Documents" + "/Childcare Application/Pictures/default.jpg", 60); //TAG: pictures access
+            i = buildImage("C:/Users/Public/Documents" + "/Childcare Application/Pictures/default.jpg", 60);
             lst_ChildBox.Items.Add(new Child(mID, "First", "Last", i, "2005/01/01", "None", "None", "C:/Users/Public/Documents" + "/Childcare Application/Pictures/default.jpg")); //TAG: pictures access
 
             int connID = this.db.GetMaxConnectionID();

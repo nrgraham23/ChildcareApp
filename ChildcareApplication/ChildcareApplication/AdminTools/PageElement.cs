@@ -101,8 +101,8 @@ namespace AdminTools {
             int[] colWidths = new int[numCols];
             if (numCols == 6) { //business report
                 colWidths[0] = 50;
-                colWidths[1] = 125;
-                colWidths[2] = 125;
+                colWidths[1] = 118;
+                colWidths[2] = 118;
                 colWidths[3] = 150;
                 colWidths[4] = 55;
                 colWidths[5] = 0;
