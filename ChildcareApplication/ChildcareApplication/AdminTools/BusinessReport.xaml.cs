@@ -1,28 +1,27 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using ChildcareApplication.DatabaseController;
+using DatabaseController;
+using MessageBoxUtils;
+using PdfSharp.Pdf;
+using System;
 using System.Data;
-using System.Data.SQLite;
 using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 
 namespace AdminTools {
-    /// <summary>
-    /// Interaction logic for BusinessReport.xaml
-    /// </summary>
     public partial class BusinessReport : Window {
+        private DataTable table;
+        private bool reportLoaded;
+        private ChildcareApplication.Properties.Settings settings;
+
         public BusinessReport() {
             InitializeComponent();
             InitializeCMB_Year();
+            reportLoaded = false;
+            settings = new ChildcareApplication.Properties.Settings();
+            this.MouseDown += WindowMouseDown;
+            this.btn_CurrentMonthReport.ToolTip = GetCurMonthToolTip(DateTime.Now);
         }
 
         private void InitializeCMB_Year() {
@@ -40,15 +39,13 @@ namespace AdminTools {
             cmb_Year.Items.Add(cmbCur);
         }
 
-        private void btn_CurrentMonthReport_Click(object sender, RoutedEventArgs e) {
-            ParentInfoDB parentInfo = new ParentInfoDB();
-            String fromDate, toDate;
+        private string GetCurMonthToolTip(DateTime now) {
             int fromMonth, fromYear, fromDay, toMonth, toYear, toDay;
 
-            fromDay = 20;
-            toDay = 19;
+            fromDay = Convert.ToInt32(settings.BillingStartDate);
+            toDay = fromDay - 1;
 
-            if (DateTime.Now.Day < 20) { //previous month and this month
+            if (DateTime.Now.Day < fromDay) { //previous month and this month
                 if (DateTime.Now.Month != 1) {
                     fromYear = DateTime.Now.Year;
                     fromMonth = DateTime.Now.Month - 1;
@@ -63,7 +60,39 @@ namespace AdminTools {
                 fromMonth = DateTime.Now.Month;
                 if (DateTime.Now.Month != 12) {
                     toYear = DateTime.Now.Year;
-                    toMonth = DateTime.Now.Month;
+                    toMonth = DateTime.Now.Month + 1;
+                } else {
+                    toYear = DateTime.Now.Year + 1;
+                    toMonth = 1;
+                }
+            }
+
+            return "From " + fromMonth + "/" + fromDay + "/" + fromYear + " to " + toMonth + "/" + toDay + "/" + toYear;
+        }
+
+        private void btn_CurrentMonthReport_Click(object sender, RoutedEventArgs e) {
+            string fromDate, toDate;
+            int fromMonth, fromYear, fromDay, toMonth, toYear, toDay;
+
+            fromDay = Convert.ToInt32(settings.BillingStartDate);
+            toDay = fromDay - 1;
+
+            if (DateTime.Now.Day < fromDay) { //previous month and this month
+                if (DateTime.Now.Month != 1) {
+                    fromYear = DateTime.Now.Year;
+                    fromMonth = DateTime.Now.Month - 1;
+                } else {
+                    fromYear = DateTime.Now.Year - 1;
+                    fromMonth = 12;
+                }
+                toYear = DateTime.Now.Year;
+                toMonth = DateTime.Now.Month;
+            } else { //this month and next month
+                fromYear = DateTime.Now.Year;
+                fromMonth = DateTime.Now.Month;
+                if (DateTime.Now.Month != 12) {
+                    toYear = DateTime.Now.Year;
+                    toMonth = DateTime.Now.Month + 1;
                 } else {
                     toYear = DateTime.Now.Year + 1;
                     toMonth = 1;
@@ -73,7 +102,7 @@ namespace AdminTools {
             fromDate = BuildDateString(fromYear, fromMonth, fromDay);
             toDate = BuildDateString(toYear, toMonth, toDay);
 
-            BuildQuery(fromDate, toDate);
+            LoadReport(fromDate, toDate);
         }
 
         private string BuildDateString(int year, int month, int day) {
@@ -82,7 +111,7 @@ namespace AdminTools {
             date = year + "-";
 
             if (month < 10) {
-                date += "0" + month;
+                date += "0" + month + "-";
             } else {
                 date += month + "-";
             }
@@ -95,33 +124,31 @@ namespace AdminTools {
         }
 
         private void btn_SpecificMonth_Click(object sender, RoutedEventArgs e) {
-            GregorianCalendar cal = new GregorianCalendar();
-
-            if (cmb_Month.SelectedIndex != -1 && cmb_Year.SelectedIndex != 1) {
+            if (cmb_Month.SelectedIndex != -1 && cmb_Year.SelectedIndex != -1) {
                 String fromDate, toDate;
 
                 String month = ((ComboBoxItem)cmb_Month.SelectedItem).Content.ToString();
                 int year = Convert.ToInt32(((ComboBoxItem)cmb_Year.SelectedItem).Content);
 
                 int monthNum = GetMonthNum(month);
-                int fromDay = 20;
-                int toDay = 19;
+                int fromDay = Convert.ToInt32(settings.BillingStartDate);
+                int toDay = fromDay - 1;
 
                 fromDate = BuildDateString(year, monthNum, fromDay);
 
                 if (monthNum != 12) {
                     toDate = BuildDateString(year, monthNum + 1, toDay);
                 } else {
-                    toDate = BuildDateString(year + 1, monthNum + 1, toDay);
+                    toDate = BuildDateString(year + 1, 1, toDay);
                 }
 
-                BuildQuery(fromDate, toDate);
+                LoadReport(fromDate, toDate);
             } else {
-                MessageBox.Show("You must select a month and year from the drop down menus.");
+                WPFMessageBox.Show("You must select a month and year from the drop down menus.");
             }
         }
 
-        private int GetMonthNum(String month) { //TODO: Find a better way to handle something like this
+        private int GetMonthNum(String month) {
             if (month == "January")
                 return 1;
             if (month == "February")
@@ -147,51 +174,163 @@ namespace AdminTools {
             return 12;
         }
 
-        private void BuildQuery(String start, String end) {
-            string query = "SELECT Guardian.Guardian_ID AS ID, Guardian.FirstName AS First, Guardian.LastName AS Last, ";
-            query += "Guardian.Phone, Guardian.Address1, Guardian.Address2, Guardian.City, Guardian.StateAbrv AS State, Guardian.Zip, ";
-            query += "'$' || case WHEN substr(ChildcareTransaction.TransactionTotal, -2, 1) = '.' THEN SUM(ChildcareTransaction.TransactionTotal) || ";
-            query += "'0' ELSE SUM(ChildcareTransaction.TransactionTotal) END AS 'Total Charges', '$' || Family.FamilyTotal AS 'Current Due' ";
-            query += "From Guardian NATURAL JOIN AllowedConnections NATURAL JOIN ChildcareTransaction NATURAL JOIN Family ";
-            query += "WHERE ChildcareTransaction.TransactionDate BETWEEN '" + start + "' AND '" + end + "' ";
-            query += "GROUP BY Guardian.Guardian_ID";
+        private void LoadReport(string startDate, string endDate) {
+            ReportsDB reportsDB = new ReportsDB();
+            DataTable table = reportsDB.GetBusinessReportTable(startDate, endDate);
+            DataTable formattedTable = FormatTable(table);
+            
+            AddTotalsColumn(formattedTable);
+            this.table = formattedTable;
 
-            LoadReport(query);
+            businessDataGrid.ItemsSource = formattedTable.DefaultView;
+
+            this.reportLoaded = true;
         }
 
-        private void LoadReport(String query) {
-            SQLiteConnection connection = new SQLiteConnection("Data Source=../../Database/Childcare_v5.s3db;Version=3;");
+        private DataTable FormatTable(DataTable table) {
+            bool regReported = false;
+            bool campReported = false;
+            string oldFamily = "";
 
-            try {
-                connection.Open();
-                SQLiteCommand cmd = new SQLiteCommand(query, connection);
-                cmd.ExecuteNonQuery();
+            DataTable formattedTable = new DataTable();
+            formattedTable.Columns.Add("ID", typeof(string));
+            formattedTable.Columns.Add("First Name", typeof(string));
+            formattedTable.Columns.Add("Last Name", typeof(string));
+            formattedTable.Columns.Add("Event Name", typeof(string));
+            formattedTable.Columns.Add("Charges", typeof(string));
 
-                SQLiteDataAdapter adapter = new SQLiteDataAdapter(cmd);
-                
-                DataTable table = new DataTable("Parent Report");
-                adapter.Fill(table);
-
-                for (int i = 0; i < table.Rows.Count; i++) {
-                    if (((String)table.Rows[i][9]).Split('.')[1].Length == 1) {
-                        table.Rows[i][9] += "0";
-                    }
+            for (int i = 0; i < table.Rows.Count; i++) {
+                if(table.Rows[i][0].ToString().Remove(5) != oldFamily) {
+                    campReported = false;
+                    regReported = false;
+                    oldFamily = table.Rows[i][0].ToString().Remove(5);
                 }
-                for (int i = 0; i < table.Rows.Count; i++) {
-                    if (((String)table.Rows[i][10]).Split('.')[1].Length == 1) {
-                        table.Rows[i][10] += "0";
-                    }
+                if(IsRegular(table.Rows[i][3].ToString()) && !regReported) {
+                    regReported = true;
+                    formattedTable.Rows.Add(table.Rows[i][0].ToString(),
+                                            table.Rows[i][1].ToString(),
+                                            table.Rows[i][2].ToString(),
+                                            "Regular Childcare",
+                                            SumRegularCare(table, oldFamily));
+                } else if (table.Rows[i][3].ToString().ToLower().Contains("camp") && !campReported) {
+                    campReported = true;
+                    formattedTable.Rows.Add(table.Rows[i][0].ToString(),
+                                            table.Rows[i][1].ToString(),
+                                            table.Rows[i][2].ToString(),
+                                            "Camp",
+                                            SumCamp(table, oldFamily));
+                } else if(IsMisc(table.Rows[i][3].ToString())) {
+                    formattedTable.Rows.Add(table.Rows[i][0].ToString(),
+                                            table.Rows[i][1].ToString(),
+                                            table.Rows[i][2].ToString(),
+                                            table.Rows[i][3].ToString(),
+                                            table.Rows[i][4].ToString());
                 }
-                BusinessDataGrid.ItemsSource = table.DefaultView;
-
-                connection.Close();
-            } catch (Exception exception) {
-                MessageBox.Show(exception.Message);
             }
+
+            return formattedTable;
+        }
+
+        private string SumRegularCare(DataTable table, string familyID) {
+            string total = "$";
+            double totalNum = 0;
+
+            for (int i = 0; i < table.Rows.Count; i++) {
+                if (table.Rows[i][0].ToString().Remove(5) == familyID && IsRegular(table.Rows[i][3].ToString())) {
+                    totalNum += Convert.ToDouble(table.Rows[i][4].ToString().Substring(1));
+                }
+            }
+            total += totalNum;
+            return total;
+        }
+
+        private string SumCamp(DataTable table, string familyID) {
+            string total = "$";
+            double totalNum = 0;
+
+            for (int i = 0; i < table.Rows.Count; i++) {
+                if (table.Rows[i][0].ToString().Remove(5) == familyID && table.Rows[i][3].ToString().ToLower().Contains("camp")) {
+                    totalNum += Convert.ToDouble(table.Rows[i][4].ToString().Substring(1));
+                }
+            }
+            total += totalNum;
+            return total;
+        }
+
+        private void AddTotalsColumn(DataTable table) {
+            GuardianInfoDB gDB = new GuardianInfoDB();
+            table.Columns.Add("Current Due", typeof(string));
+            if (table.Rows.Count > 1) {
+                string id = "";
+                bool campTotalDisplayed = false;
+                bool regTotalDisplayed = false;
+
+                for (int i = 0; i < table.Rows.Count; i++) {
+                    if (id != table.Rows[i][0].ToString().Remove(5)) {
+                        campTotalDisplayed = false;
+                        regTotalDisplayed = false;
+                        id = table.Rows[i][0].ToString().Remove(5);
+                    }
+                    if (IsRegular(table.Rows[i][3].ToString())) {
+                        if (!regTotalDisplayed) {
+                            table.Rows[i][5] = String.Format("{0:0.00}", gDB.GetCurrentDue(table.Rows[i][0].ToString(), "Regular"));
+                            regTotalDisplayed = true;
+                        }
+                    } else if (table.Rows[i][3].ToString().Contains("Camp") || table.Rows[i][3].ToString().Contains("camp")) {
+                        if (!campTotalDisplayed) {
+                            campTotalDisplayed = true;
+                            table.Rows[i][5] = String.Format("{0:0.00}", gDB.GetCurrentDue(table.Rows[i][0].ToString(), "Camp"));
+                        }
+                    }
+                    if (table.Rows[i][5] == "$0.00") {
+                        table.Rows[i][5] = "";
+                    }
+
+                }
+            }
+        }
+
+        private bool IsRegular(string eventName) {
+            return (eventName == "Regular Childcare" || eventName == "Infant Childcare" || eventName == "Adolescent Childcare");
+        }
+
+        private bool IsMisc(string eventName) {
+            return !(IsRegular(eventName) || eventName.ToLower().Contains("camp"));
         }
 
         private void btn_Exit_Click(object sender, RoutedEventArgs e) {
             this.Close();
+        }
+
+        private void btn_Print_Click(object sender, RoutedEventArgs e) { //height = 1056, width = 816
+            if (this.reportLoaded && this.table.Rows.Count > 0) {
+                PrintDialog printDialog = new PrintDialog();
+                printDialog.UserPageRangeEnabled = true;
+
+                if (printDialog.ShowDialog() == true) {
+                    var paginator = new ReportsPaginator(this.table.Rows.Count, this.table,
+                      new Size(printDialog.PrintableAreaWidth, printDialog.PrintableAreaHeight));
+
+                    printDialog.PrintDocument(paginator, "Business Report Data Table");
+                }
+            } else {
+                WPFMessageBox.Show("You must load a report before you can print one!");
+            }
+        }
+
+        private void WindowMouseDown(object sender, MouseButtonEventArgs e) {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
+
+        private void btn_Save_Click(object sender, RoutedEventArgs e) {
+            if (this.reportLoaded && this.table.Rows.Count > 0) {
+                PDFCreator pdfCreator = new PDFCreator(this.table);
+                PdfDocument pdf = pdfCreator.CreatePDF(this.businessDataGrid.Columns.Count);
+                pdfCreator.SavePDF(pdf);
+            } else {
+                WPFMessageBox.Show("You must load a report before you can save one!");
+            }
         }
     }
 }

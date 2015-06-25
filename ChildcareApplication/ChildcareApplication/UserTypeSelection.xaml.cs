@@ -1,18 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using AdminTools;
+using GuardianTools;
+using MessageBoxUtils;
+using System;
+using System.IO;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using AdminTools;
-using ParentTools;
 
 namespace ChildcareApplication {
     /// <summary>
@@ -21,10 +13,11 @@ namespace ChildcareApplication {
     public partial class UserSelection : Window {
         public UserSelection() {
             InitializeComponent();
+            this.MouseDown += WindowMouseDown;
         }
 
         private void btn_ParentUse_Click(object sender, RoutedEventArgs e) {
-            ParentLogin parentLogin = new ParentLogin();
+            GuardianCheckIn parentLogin = new GuardianCheckIn();
             parentLogin.Show();
             this.Close();
         }
@@ -37,6 +30,30 @@ namespace ChildcareApplication {
 
         private void btn_Exit_Click(object sender, RoutedEventArgs e) {
             Application.Current.Shutdown();
+        }
+
+        private void WindowMouseDown(object sender, MouseButtonEventArgs e) {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
+
+        private void btn_Help_Click(object sender, RoutedEventArgs e) {
+            if (File.Exists("C:/Users/Public/Documents" + "/Childcare Application/Childcare Application User Manual.pdf")) {
+                try {
+                    System.Diagnostics.Process.Start("C:/Users/Public/Documents" + "/Childcare Application/Childcare Application User Manual.pdf");
+                } catch (System.IO.FileNotFoundException) {
+                    WPFMessageBox.Show("Unable to open user manual. It may not exist.");
+                } catch (Exception) {
+                    WPFMessageBox.Show("Unable to open user manual.");
+                }
+            } else {
+                WPFMessageBox.Show("Unable to open user manual.");
+            }
+        }
+
+        private void btn_About_Click(object sender, RoutedEventArgs e) {
+            AboutWindow about = new AboutWindow();
+            about.ShowDialog();
         }
     }
 }

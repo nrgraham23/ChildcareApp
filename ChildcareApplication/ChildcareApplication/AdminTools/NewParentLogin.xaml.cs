@@ -1,64 +1,59 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using ChildcareApplication.AdminTools;
+using DatabaseController;
+using MessageBoxUtils;
+using System;
+using System.Data;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using System.Data;
 
 namespace AdminTools {
     /// <summary>
     /// Interaction logic for win_NewParentLogin.xaml
     /// </summary>
     public partial class NewParentLogin : Window {
-        private LoadParentInfoDatabase db;
+        private GuardianInfoDB db;
+        private bool formError;
         public NewParentLogin() {
             InitializeComponent();
-            this.db = new LoadParentInfoDatabase();
+            this.db = new GuardianInfoDB();
+            this.MouseDown += WindowMouseDown;
+            txt_ParentID1.Focus();
         }
 
         private void btn_AddNewParent_Click(object sender, RoutedEventArgs e) {
             string pID = "", PIN = "";
             bool formNotComplete = CheckIfNull();
-            if (!formNotComplete)//form is completed
-            {
-                bool sameID = checkIfSame(txt_ParentID1.Text, txt_ParentID2.Text);
-                bool samePIN = checkIfSame(psw_ParentPIN1.Password, psw_ParentPIN2.Password);
-                if (sameID && samePIN)//both IDand PIN are the same vlues
-                {
-                    bool numbersID = checkIfNumbers(txt_ParentID1.Text, txt_ParentID2.Text);
-                    bool numbersPIN = checkIfNumbers(psw_ParentPIN1.Password, psw_ParentPIN2.Password);
-                    if (numbersID && numbersPIN)//both ID and PIN are numbers
-                    {
-                        pID = txt_ParentID1.Text;
-                        PIN = psw_ParentPIN1.Password;
-                        DataSet DS = new DataSet();
-                        DS = this.db.GetParentInfo(pID);
-                        int count = DS.Tables[0].Rows.Count;
+            if (!formNotComplete) {
+                bool sameID = CheckIfSame(txt_ParentID1.Text, txt_ParentID2.Text);
+                bool samePIN = CheckIfSame(psw_ParentPIN1.Password, psw_ParentPIN2.Password);
 
-                        if (count == 0)//ID does not exist
-                        {
+                bool regexID = RegExpressions.RegexID(txt_ParentID1.Text);
+                bool regexPIN = RegExpressions.RegexPIN(psw_ParentPIN1.Password);
 
-                            this.db.AddNewParent(pID, PIN, "\"First\"", "\"Last\"", "\"000-000-0000\"", "\"someEmail@email.com\"", "\"123 Road St\"", "\"none\"", "\"City\"", "\"WA\"", "\"12345\"", "\"../../Pictures/default.jpg\"");
-                            MakeFamilyID(pID);
-                            //MessageBox.Show("Made New Parent");
+                if (sameID && samePIN && regexID && regexPIN) {
+                    pID = string.Format("{0:000000}", txt_ParentID1.Text);
+                    PIN = string.Format("{0:0000}", psw_ParentPIN1.Password);
+                    DataSet DS = new DataSet();
+                    DS = this.db.GetParentInfoDS(pID);
+                    int count = DS.Tables[0].Rows.Count;
 
-                            AdminEditParentInfo adminEditParentInfo = new AdminEditParentInfo(pID);
-                            adminEditParentInfo.Show();
-                            this.Close();
+                    if (count == 0) {
+                        string hashedPIN = ChildcareApplication.AdminTools.Hashing.HashPass(PIN);
+                        hashedPIN = "\"" + hashedPIN + "\"";
+                        this.db.AddNewParent(pID, hashedPIN, "\"First\"", "\"Last\"", "\"000-000-0000\"", "\"someEmail@email.com\"", "\"123 Road St\"", "\"none\"", "\"City\"", "\"WA\"", "\"12345\"", "'" + "C:\\Users\\Public\\Documents" + "\\Childcare Application\\Pictures\\default.jpg'"); //TAG: pictures access
+                        MakeFamilyID(pID);
 
-                        } else {
-                            MessageBox.Show("A Guardian with this ID already Exists. Please re-enter your ID");
-                        }
+                        AdminEditParentInfo adminEditParentInfo = new AdminEditParentInfo(pID);
+                        adminEditParentInfo.Show();
+                        this.Close();
+
+                    } else {
+                        WPFMessageBox.Show("A Guardian with this ID already Exists. Please re-enter your ID");
                     }
+
                 }
+
             }
 
         }
@@ -73,62 +68,71 @@ namespace AdminTools {
             for (int x = 0; x < ID.Length - 1; x++) {
                 familyID += ID[x];
             }
-            DataSet DS = new DataSet();
-            DS = this.db.checkIfFamilyExists(familyID);
 
-            int count = DS.Tables[0].Rows.Count;
+            string fID = this.db.CheckIfFamilyExists(familyID);
 
-            if (count == 0)//FamilyID does not exist
+            if (string.IsNullOrWhiteSpace(fID))//FamilyID does not exist
              {
-                this.db.AddNewFamily(familyID, 0.0);
+                this.db.AddNewFamily(familyID, 0.0, 0, 0);
             }
 
         }
-        private bool CheckIfNull() {
-
-
-            if (string.IsNullOrWhiteSpace(this.txt_ParentID1.Text)) {
-                MessageBox.Show("Please enter your ID number.");
+        internal bool CheckIfNull() {
+            formError = true;
+            if (string.IsNullOrWhiteSpace(this.txt_ParentID1.Text) && formError) {
+                WPFMessageBox.Show("Please enter your ID number.");
+                formError = false;
                 return true;
-            } else if (string.IsNullOrWhiteSpace(this.txt_ParentID2.Text)) {
-                MessageBox.Show("Please enter your ID number a second time.");
+            } else if (string.IsNullOrWhiteSpace(this.txt_ParentID2.Text) && formError) {
+                WPFMessageBox.Show("Please enter your ID number a second time.");
+                formError = false;
                 return true;
-            } else if (string.IsNullOrWhiteSpace(this.psw_ParentPIN1.Password)) {
-                MessageBox.Show("Please enter your PIN number.");
+            } else if (string.IsNullOrWhiteSpace(this.psw_ParentPIN1.Password) && formError) {
+                WPFMessageBox.Show("Please enter your PIN number.");
+                formError = false;
                 return true;
-            } else if (string.IsNullOrWhiteSpace(this.psw_ParentPIN2.Password)) {
-                MessageBox.Show("Please enter your PIN number a second time.");
+            } else if (string.IsNullOrWhiteSpace(this.psw_ParentPIN2.Password) && formError) {
+                WPFMessageBox.Show("Please enter your PIN number a second time.");
+                formError = false;
                 return true;
             }
             return false;
         }//end CheckIfNull
 
-        private bool checkIfSame(string str1, string str2) {
+        internal bool CheckIfSame(string str1, string str2) {
 
             if (str1.Equals(str2))
                 return true;
             else {
-                MessageBox.Show("Your ID or PIN numbers do not match. Please re-enter");
+                WPFMessageBox.Show("Your ID or PIN numbers do not match. Please re-enter");
 
                 return false;
             }
 
         }
 
-        private bool checkIfNumbers(string str1, string str2) {
-            int parseNum1, parseNum2;
+        private void SelectAllGotFocus(object sender, RoutedEventArgs e) {
+            TextBox tb = (TextBox)sender;
+            Dispatcher.BeginInvoke((Action)(tb.SelectAll));
 
-            bool isNum1 = int.TryParse(str1, out parseNum1);
-            bool isNum2 = int.TryParse(str1, out parseNum2);
-
-            if (isNum1 && isNum2)
-                return true;
-            else {
-                MessageBox.Show("Your ID or PIN numbers are not numbers only. Please re-enter.");
-
-                return false;
-            }
         }
 
+        private void SelectAllGotFocusPW(object sender, RoutedEventArgs e) {
+            PasswordBox pwb = (PasswordBox)sender;
+            Dispatcher.BeginInvoke((Action)(pwb.SelectAll));
+        }
+
+        private void WindowMouseDown(object sender, MouseButtonEventArgs e) {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
+
+        private void Key_Up_Event(object sender, KeyEventArgs e) {
+            if (e.Key == Key.Enter) {
+                TraversalRequest request = new TraversalRequest(FocusNavigationDirection.Next); //Found at: http://stackoverflow.com/questions/23008670/wpf-and-mvvm-how-to-move-focus-to-the-next-control-automatically
+                request.Wrapped = true;
+                ((Control)e.Source).MoveFocus(request);
+            }
+        }
     }
 }

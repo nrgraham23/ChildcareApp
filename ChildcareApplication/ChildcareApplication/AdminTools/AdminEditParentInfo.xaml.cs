@@ -1,100 +1,165 @@
-﻿using System;
+﻿using ChildcareApplication.AdminTools;
+using DatabaseController;
+using MessageBoxUtils;
+using System;
 using System.Data;
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-
 namespace AdminTools {
-    /// <summary>
-    /// Interaction logic for win_AdminEditParentInfo.xaml
-    /// </summary>
     public partial class AdminEditParentInfo : Window {
 
-        private LoadParentInfoDatabase db;
+        private GuardianInfoDB db;
+        private bool formError;
         public AdminEditParentInfo(string parentID) {
 
             InitializeComponent();
             AddStates();
-            this.db = new LoadParentInfoDatabase();
-            cnv_ParentIcon.Background = new SolidColorBrush(Colors.Aqua); //setting canvas color so we can see it
+            this.db = new GuardianInfoDB();
             btn_Delete.Background = new SolidColorBrush(Colors.Red);
             LoadParentInfo(parentID);
+            this.MouseDown += WindowMouseDown;
         }
 
         private void btn_Submit_Click(object sender, RoutedEventArgs e) {
 
-            bool formNotComplete = true; 
-            formNotComplete = CheckIfNull(); 
+            bool formNotComplete = true;
+            formNotComplete = CheckIfNull();
 
             //save all information to database
-            if (formNotComplete == false)
-            {
-                string pID, firstName, lastName, address, address2, city, state, zip, email, phone, path;
+            if (formNotComplete == false) {
+                bool regex = RegexValidation();
 
-                pID = txt_IDNumber.Text; 
-                firstName = txt_FirstName.Text;
-                lastName = txt_LastName.Text;
+                if (regex) {
+                    string pID, firstName, lastName, address, address2, city, state, zip, email, phone, path;
 
-                phone = txt_PhoneNumber.Text; 
-                email = txt_Email.Text; 
+                    pID = txt_IDNumber.Text;
+                    firstName = txt_FirstName.Text;
+                    lastName = txt_LastName.Text;
 
-                address = txt_Address.Text;
-                address2 = txt_Address2.Text; 
-                city = txt_City.Text;
-                state = cbo_State.Text; //dont know if this will work yet
-                zip = txt_Zip.Text;
-                path = txt_FilePath.Text; 
+                    phone = txt_PhoneNumber.Text;
+                    email = txt_Email.Text;
 
-                this.db.UpdateParentInfo(pID, firstName, lastName, phone, email, address, address2, city, state, zip, path); 
+                    address = txt_Address.Text;
+                    address2 = txt_Address2.Text;
+                    city = txt_City.Text;
+                    state = cbo_State.Text;
+                    zip = txt_Zip.Text;
+                    path = txt_FilePath.Text;
 
+                    this.db.UpdateParentInfo(pID, firstName, lastName, phone, email, address, address2, city, state, zip, path);
+                }
 
-               //ClearFields();
             }
-        }//end btn_Submit_Click
+        }
+
+        internal bool RegexValidation() {
+            formError = true;
+            bool fname = false, lname = false, phone = false, email = false, address = false, city = false, zip = false, path = false;
+            if (formError) {
+                fname = RegExpressions.RegexName(txt_FirstName.Text);
+                if (!fname) {
+                    txt_FirstName.Focus();
+                    formError = false;
+                }
+            }
+            if (formError) {
+                lname = RegExpressions.RegexName(txt_LastName.Text);
+                if (!lname) {
+                    txt_LastName.Focus();
+                    formError = false;
+                }
+            }
+            if (formError) {
+                phone = RegExpressions.RegexPhoneNumber(txt_PhoneNumber.Text);
+                if (!phone) {
+                    txt_PhoneNumber.Focus();
+                    formError = false;
+                }
+            }
+            if (formError) {
+                email = RegExpressions.RegexEmail(txt_Email.Text);
+                if (!email) {
+                    txt_Email.Focus();
+                    formError = false;
+                }
+            }
+            if (formError) {
+                address = RegExpressions.RegexAddress(txt_Address.Text);
+                if (!address) {
+                    txt_Address.Focus();
+                    formError = false;
+                }
+            }
+            if (formError) {
+                city = RegExpressions.RegexCity(txt_City.Text);
+                if (!city) {
+                    txt_City.Focus();
+                    formError = false;
+                }
+            }
+            if (formError) {
+                zip = RegExpressions.RegexZIP(txt_Zip.Text);
+                if (!zip) {
+                    txt_Zip.Focus();
+                    formError = false;
+                }
+            }
+
+            if (formError) {
+                path = RegExpressions.RegexFilePath(txt_FilePath.Text);
+                if (!path) {
+                    formError = false;
+                }
+            }
+
+            if (fname && lname && phone && email && address && city && zip && path)
+                return true;
+
+            return false;
+
+        }
 
         private void btn_Finish_Click(object sender, RoutedEventArgs e) {
-
-            AdminMenu adminMenu = new AdminMenu();
-            adminMenu.Show();
-            this.Close(); 
-        }//end btn_Finish_Click
+            this.Close();
+        }
 
         private void btn_AddChild_Click(object sender, RoutedEventArgs e) {
 
-            string pID = txt_IDNumber.Text; 
-            win_AdminEditChildInfo AdminEditChildInfo = new win_AdminEditChildInfo(pID);
+            string pID = txt_IDNumber.Text;
+            AdminEditChildInfo AdminEditChildInfo = new AdminEditChildInfo(pID);
             AdminEditChildInfo.Show();
             this.Close();
 
-        }//end btn_AddChild_Click
+        }
 
         private void btn_Delete_Click(object sender, RoutedEventArgs e) {
 
-            bool? delete;
-             
-            DeleteConformation DeleteConformation = new DeleteConformation();
-            delete = DeleteConformation.ShowDialog();
-            if ((bool)delete == true)
-            {
+            MessageBoxResult messageBoxResult = WPFMessageBox.Show("Are you sure you wish to delete this person?", "Deletion Conformation", MessageBoxButton.YesNo);
+            if (messageBoxResult == MessageBoxResult.Yes) {
                 string pID = txt_IDNumber.Text;
                 this.db.DeleteParentInfo(pID);
                 ClearFields();
-                DisableForm(); 
+                DisableForm();
             }
 
+        }
 
-        }//end btn_Delete_Click
         private void DisableForm() {
             btn_EditChild.IsEnabled = false;
             btn_Delete.IsEnabled = false;
             btn_SubmitInfo.IsEnabled = false;
-            btn_ChangePicture.IsEnabled = false; 
+            btn_ChangePicture.IsEnabled = false;
+            btn_changePIN.IsEnabled = false;
         }
 
-        private void ClearFields() {
+        internal void ClearFields() {
             txt_Address.Clear();
-            txt_Address2.Clear(); 
+            txt_Address2.Clear();
             txt_City.Clear();
             txt_FirstName.Clear();
             txt_LastName.Clear();
@@ -102,69 +167,47 @@ namespace AdminTools {
             txt_PhoneNumber.Clear();
             txt_Zip.Clear();
             txt_Email.Clear();
-            txt_IDNumber.Clear();
-            txt_FilePath.Clear(); 
-        }//end ClearFields
+            txt_FilePath.Clear();
+        }
 
-        private bool CheckIfNull() {
+        internal bool CheckIfNull() {
 
-            if (string.IsNullOrWhiteSpace(this.txt_Address.Text))
-            {
-                MessageBox.Show("Please enter your address.");
-                return true; 
-            }
-
-            else if (string.IsNullOrWhiteSpace(this.txt_City.Text))
-            {
-                MessageBox.Show("Please enter your city.");
-                return true; 
-            }
-
-            else if (string.IsNullOrWhiteSpace(this.txt_Zip.Text))
-            {
-                MessageBox.Show("Please enter your zip.");
-                return true;     
-            }
-
-            else if (string.IsNullOrWhiteSpace(this.txt_FirstName.Text))
-            {
-                MessageBox.Show("Please enter your first name.");
+            if (string.IsNullOrWhiteSpace(this.txt_Address.Text)) {
+                WPFMessageBox.Show("Please enter your address.");
+                return true;
+            } else if (string.IsNullOrWhiteSpace(this.txt_City.Text)) {
+                WPFMessageBox.Show("Please enter your city.");
+                return true;
+            } else if (string.IsNullOrWhiteSpace(this.txt_Zip.Text)) {
+                WPFMessageBox.Show("Please enter your zip.");
+                return true;
+            } else if (string.IsNullOrWhiteSpace(this.txt_FirstName.Text)) {
+                WPFMessageBox.Show("Please enter your first name.");
+                return true;
+            } else if (string.IsNullOrWhiteSpace(this.txt_LastName.Text)) {
+                WPFMessageBox.Show("Please enter your last name.");
+                return true;
+            } else if (string.IsNullOrWhiteSpace(this.cbo_State.Text)) {
+                WPFMessageBox.Show("Please enter your state.");
+                return true;
+            } else if (string.IsNullOrWhiteSpace(this.txt_Email.Text)) {
+                WPFMessageBox.Show("Please enter your e-mail.");
                 return true;
             }
-
-            else if (string.IsNullOrWhiteSpace(this.txt_LastName.Text))
-            {
-                MessageBox.Show("Please enter your last name.");
-                return true;
-            }
-
-            else if (string.IsNullOrWhiteSpace(this.cbo_State.Text))
-            {
-                MessageBox.Show("Please enter your state.");
-                return true;
-            }
-
-            else if (string.IsNullOrWhiteSpace(this.txt_Email.Text))
-            {
-                MessageBox.Show("Please enter your e-mail.");
-                return true;
-            }
-            return false; 
-        }//end checkIfNull
+            return false;
+        }
 
         private void LoadParentInfo(string parentID) {
 
             txt_IDNumber.Text = parentID;
             DataSet DS = new DataSet();
-            DS = this.db.GetParentInfo(parentID);
+            DS = this.db.GetParentInfoDS(parentID);
             int count = DS.Tables[0].Rows.Count;
-            if(count > 0)
-            {
-                string deletionDate = ""; 
+            if (count > 0) {
+                string deletionDate = "";
                 deletionDate = DS.Tables[0].Rows[0][12].ToString();
 
-                if (String.IsNullOrEmpty(deletionDate))
-                {
+                if (String.IsNullOrEmpty(deletionDate)) {
                     txt_FirstName.Text = DS.Tables[0].Rows[0][2].ToString();
                     txt_LastName.Text = DS.Tables[0].Rows[0][3].ToString();
 
@@ -179,23 +222,29 @@ namespace AdminTools {
 
                     txt_FilePath.Text = DS.Tables[0].Rows[0][11].ToString();
                     string imageLink = DS.Tables[0].Rows[0][11].ToString();
-                    ImageBrush ib = new ImageBrush();
-                    ib.ImageSource = new BitmapImage(new Uri(imageLink, UriKind.Relative));
-                    cnv_ParentIcon.Background = ib;
-                }
-                else
-                {            
+
+                    if (File.Exists(imageLink)) {
+                        ImageBrush ib = new ImageBrush();
+                        ib.ImageSource = new BitmapImage(new Uri(imageLink, UriKind.Relative));
+                        cnv_ParentIcon.Background = ib;
+                    } else {
+                        ImageBrush ib = new ImageBrush();
+                        ib.ImageSource = new BitmapImage(new Uri(@"" + "C:/Users/Public/Documents" + "/Childcare Application/Pictures/default.jpg", UriKind.Relative));
+                        cnv_ParentIcon.Background = ib;
+                    }
+                } else {
                     ClearFields();
                     DisableForm();
-                    MessageBox.Show("This Parent has already been deleted.");
+                    WPFMessageBox.Show("This Parent has already been deleted.");
                 }
             }
 
-        }//end LoadParentInfo
+        }
+
         private void AddStates() {
 
             cbo_State.SelectedIndex = 46;
-            
+
             cbo_State.Items.Add("AL");
             cbo_State.Items.Add("AK");
             cbo_State.Items.Add("AZ");
@@ -253,49 +302,69 @@ namespace AdminTools {
 
         }
 
-        private void btn_ChangePicture_Click(object sender, RoutedEventArgs e)
-        {
-           
-                //string dir = @"..\..\..\..\Photos"; 
-                string dir = @"C:\";
-                Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
+        private void btn_ChangePicture_Click(object sender, RoutedEventArgs e) {
 
-                dlg.FileName = "default"; // Default file name
-                dlg.DefaultExt = ".jpg"; // Default file extension
-                dlg.Filter = "Pictures (.jpg)|*.jpg"; // Filter files by extension 
-                dlg.InitialDirectory = dir;
-                Nullable<bool> result = dlg.ShowDialog();
+            string imagePath = @"" + "C:/Users/Public/Documents" + "/Childcare Application/Pictures"; //TAG: pictures access
+            imagePath = imagePath.Replace(@"/", @"\");
 
-                // Process open file dialog box results 
-                if (result == true)
-                {
-                    // Open document 
-                    string path = "../../Pictures/"; 
-                    string filename = dlg.FileName;
-                    string[] words = filename.Split('\\');
+            Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
 
-                    path += words[words.Length - 1]; 
-                    
+            dlg.FileName = "default"; // Default file name
+            dlg.DefaultExt = ".jpg"; // Default file extension
+            dlg.Filter = "Pictures (.jpg)|*.jpg"; // Filter files by extension 
+            dlg.InitialDirectory = imagePath;
+            Nullable<bool> result = dlg.ShowDialog();
 
-                    try
-                    {
+            // Process open file dialog box results 
+            if (result == true) {
+                // Open document 
+                string path = "C:\\Users\\Public\\Documents" + "\\Childcare Application\\Pictures\\"; //TAG: pictures access
+                string filename = dlg.FileName;
+                string[] words = filename.Split('\\');
+
+                path += words[words.Length - 1];
+
+                if (File.Exists(path)) {
+                    try {
                         string imageLink = path;
                         ImageBrush ib = new ImageBrush();
                         ib.ImageSource = new BitmapImage(new Uri(imageLink, UriKind.Relative));
                         cnv_ParentIcon.Background = ib;
                         txt_FilePath.Text = path;
-                    }
-                    catch(Exception)
-                    {
-                        MessageBox.Show("Could not change picture to" + path);
+                    } catch (Exception) {
+                        WPFMessageBox.Show("Could not change picture to" + path);
 
                     }
-
+                } else {
+                    WPFMessageBox.Show(@"The picture you specified is not the directory C:\Users\Public\Childcare Application\Pictures");
                 }
+            }
+        }
 
+        private void SelectAllGotFocus(object sender, RoutedEventArgs e) {
+            TextBox tb = (TextBox)sender;
+            Dispatcher.BeginInvoke((Action)(tb.SelectAll));
+        }
+        private void WindowMouseDown(object sender, MouseButtonEventArgs e) {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
 
-        }//end AddStates
+        private void Key_Up_Event(object sender, KeyEventArgs e) {
+            if (e.Key == Key.Enter) {
+                TraversalRequest request = new TraversalRequest(FocusNavigationDirection.Next); //Found at: http://stackoverflow.com/questions/23008670/wpf-and-mvvm-how-to-move-focus-to-the-next-control-automatically
+                request.Wrapped = true;
+                ((Control)e.Source).MoveFocus(request);
+            }
+        }
 
-
-    }//end class
-}//end nameSpace
+        private void btn_changePIN_Click(object sender, RoutedEventArgs e) {
+            MessageBoxResult messageBoxResult = WPFMessageBox.Show("Are you sure you wish to permanently change this person's PIN?", "PIN Chnage Conformation", MessageBoxButton.YesNo);
+            if (messageBoxResult == MessageBoxResult.Yes) {
+                string pID = txt_IDNumber.Text;
+                AdminChangeGuardianPIN adminChangeGuardianPIN = new AdminChangeGuardianPIN(pID);
+                adminChangeGuardianPIN.ShowDialog();
+            }
+        }
+    }
+}

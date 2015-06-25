@@ -1,18 +1,12 @@
-﻿using System;
+﻿using DatabaseController;
+using MessageBoxUtils;
+using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SQLite;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 
 namespace AdminTools {
     public partial class EditEvents : Window {
@@ -20,59 +14,62 @@ namespace AdminTools {
             InitializeComponent();
             LoadEvents();
             FillComboBox();
+            this.MouseDown += WindowMouseDown;
         }
 
         private void LoadEvents() {
-            SQLiteConnection connection = new SQLiteConnection("Data Source=../../Database/Childcare_v5.s3db;Version=3;");
-            String query = "SELECT * FROM EventData;";
-
-            try {
-                connection.Open();
-                SQLiteCommand cmd = new SQLiteCommand(query, connection);
-                cmd.ExecuteNonQuery();
-
-                SQLiteDataAdapter adapter = new SQLiteDataAdapter(cmd);
-                DataTable table = new DataTable("Event Info");
-                adapter.Fill(table);
-                EventViewDataGrid.ItemsSource = table.DefaultView;
-                //adapter.Update(table);
-
-                connection.Close();
-            } catch (Exception exception) {
-                MessageBox.Show(exception.Message);
-            }
+            EventDB eventDB = new EventDB();
+            DataTable table = eventDB.GetEventDisplay();
+            EventViewDataGrid.ItemsSource = table.DefaultView;
         }
 
         private void FillComboBox() {
-            SQLiteConnection connection = new SQLiteConnection("Data Source=../../Database/Childcare_v5.s3db;Version=3;");
-            String query = "SELECT Event_ID FROM EventData;";
+            EventDB eventDB = new EventDB();
+            List<string> namesList = eventDB.GetAllEventNames();
 
-            try {
-                connection.Open();
-                SQLiteCommand cmd = new SQLiteCommand(query, connection);
-
-                SQLiteDataReader reader = cmd.ExecuteReader();
-
-                while (reader.Read()) {
-                    String eventID = reader.GetString(0);
-                    ComboBoxItem item = new ComboBoxItem();
-                    item.Content = eventID;
-                    cmd_EventIDCombo.Items.Add(item);
-                }
-                connection.Close();
-            } catch (Exception exception) {
-                MessageBox.Show(exception.Message);
+            for (int i = 0; i < namesList.Count; i++) {
+                String eventID = namesList[i];
+                ComboBoxItem item = new ComboBoxItem();
+                item.Content = eventID;
+                cmd_EventIDCombo.Items.Add(item);
             }
+        }
+
+        private void ReFillComboBox() {
+            this.cmd_EventIDCombo.Items.Clear();
+            FillComboBox();
         }
 
         private void btn_EditEvent_Click(object sender, RoutedEventArgs e) {
             if (cmd_EventIDCombo.SelectedIndex != -1) {
-                EventModificationWindow win = new EventModificationWindow(((ComboBoxItem)cmd_EventIDCombo.SelectedItem).Content.ToString());
+                String test = ((ComboBoxItem)cmd_EventIDCombo.SelectedItem).Content.ToString();
+                EventModificationWindow win = new EventModificationWindow(test);
                 win.Show();
                 this.Close();
             } else {
-                MessageBox.Show("You must select an event ID from the drop down box.");
+                WPFMessageBox.Show("You must select an event name from the drop down box.");
             }
+        }
+
+        private void btn_DeleteEvent_Click(object sender, RoutedEventArgs e) {
+            if (cmd_EventIDCombo.SelectedIndex != -1) {
+                EventDB eventDB = new EventDB();
+                String test = ((ComboBoxItem)cmd_EventIDCombo.SelectedItem).Content.ToString();
+
+                if (!IsProtected(test)) {
+                    eventDB.DeleteEvent(test);
+                    LoadEvents();
+                    ReFillComboBox();
+                } else {
+                    WPFMessageBox.Show("" + test + " is a protected event.  You may not delete it.");
+                }
+            } else {
+                WPFMessageBox.Show("You must select an event name from the drop down box.");
+            }
+        }
+
+        private bool IsProtected(string eventName) {
+            return (eventName == "Regular Childcare" || eventName == "Late Fee" || eventName == "Adolescent Childcare" || eventName == "Infant Childcare");
         }
 
         private void btn_AddEvent_Click(object sender, RoutedEventArgs e) {
@@ -83,6 +80,28 @@ namespace AdminTools {
 
         private void btn_Exit_Click(object sender, RoutedEventArgs e) {
             this.Close();
+        }
+
+        private void WindowMouseDown(object sender, MouseButtonEventArgs e) {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
+
+        private void EventViewDataGrid_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) {
+            if (this.EventViewDataGrid.HasItems) {
+                DataRowView row = (DataRowView)EventViewDataGrid.SelectedItem;
+                string eventName = row.Row[0].ToString();
+                this.cmd_EventIDCombo.SelectedIndex = FindCMBIndex(eventName);
+            }
+        }
+
+        private int FindCMBIndex(string eventName) {
+            for (int i = 0; i < this.cmd_EventIDCombo.Items.Count; i++) {
+                if (((DataRowView)EventViewDataGrid.Items[i]).Row[0].ToString() == eventName) {
+                    return i;
+                }
+            }
+            return -1;
         }
     }
 }

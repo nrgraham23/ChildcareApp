@@ -1,62 +1,101 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using ChildcareApplication.AdminTools;
+using ChildcareApplication.DatabaseController;
+using ChildcareApplication.Properties;
+using DatabaseController;
+using MessageBoxUtils;
+using PdfSharp.Pdf;
+using System;
+using System.Data;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using System.Data;
-using System.Data.SQLite;
-using ChildcareApplication.AdminTools;
 
 namespace AdminTools {
     public partial class ParentReport : Window {
+        private DataTable table;
+        private bool reportLoaded;
+
         public ParentReport() {
             InitializeComponent();
-            cnv_ParentIcon.Background = new SolidColorBrush(Colors.Aqua);
-            this.txt_ParentID.Focus();
-            this.ParentDataGrid.IsTabStop = false;
+            this.txt_GuardianID.Focus();
+            this.parentDataGrid.IsTabStop = false;
+            this.reportLoaded = false;
+            this.dte_fromDate.Loaded += delegate {
+                var textBox = (TextBox)dte_fromDate.Template.FindName("PART_TextBox", dte_fromDate);
+                textBox.Background = dte_fromDate.Background;
+            };
+            this.dte_toDate.Loaded += delegate {
+                var textBox = (TextBox)dte_toDate.Template.FindName("PART_TextBox", dte_toDate);
+                textBox.Background = dte_toDate.Background;
+            };
+            this.MouseDown += WindowMouseDown;
+            this.btn_CurrentMonthReport.ToolTip = GetCurMonthToolTip(DateTime.Now);
+        }
+
+        private string GetCurMonthToolTip(DateTime now) {
+            Settings settings = new Settings();
+            int fromMonth, fromYear, fromDay, toMonth, toYear, toDay;
+
+            fromDay = Convert.ToInt32(settings.BillingStartDate);
+            toDay = fromDay - 1;
+
+            if (DateTime.Now.Day < fromDay) { //previous month and this month
+                if (DateTime.Now.Month != 1) {
+                    fromYear = DateTime.Now.Year;
+                    fromMonth = DateTime.Now.Month - 1;
+                } else {
+                    fromYear = DateTime.Now.Year - 1;
+                    fromMonth = 12;
+                }
+                toYear = DateTime.Now.Year;
+                toMonth = DateTime.Now.Month;
+            } else { //this month and next month
+                fromYear = DateTime.Now.Year;
+                fromMonth = DateTime.Now.Month;
+                if (DateTime.Now.Month != 12) {
+                    toYear = DateTime.Now.Year;
+                    toMonth = DateTime.Now.Month + 1;
+                } else {
+                    toYear = DateTime.Now.Year + 1;
+                    toMonth = 1;
+                }
+            }
+
+            return "From " + fromMonth + "/" + fromDay + "/" + fromYear + " to " + toMonth + "/" + toDay + "/" + toYear;
         }
 
         //Loads a report based on the passed in MySQL query
-        private void LoadReport(String query) {
-            SQLiteConnection connection = new SQLiteConnection("Data Source=../../Database/Childcare_v5.s3db;Version=3;");
+        private void LoadReport(params string[] dates) {
+            ReportsDB reportDB = new ReportsDB();
+            this.table = reportDB.GetParentReportTable(this.txt_GuardianID.Text, dates);
+            parentDataGrid.ItemsSource = table.DefaultView;
 
-            try {
-                connection.Open();
-                SQLiteCommand cmd = new SQLiteCommand(query, connection);
-                cmd.ExecuteNonQuery();
-
-                SQLiteDataAdapter adapter = new SQLiteDataAdapter(cmd);
-                DataTable table = new DataTable("Parent Report");
-                adapter.Fill(table);
-                ParentDataGrid.ItemsSource = table.DefaultView;
-
-                connection.Close();
-            } catch (Exception exception) {
-                MessageBox.Show(exception.Message);
-            }
+            this.reportLoaded = true;
         }
 
         private void btn_LoadAll_Click(object sender, RoutedEventArgs e) {
-            BuildQuery();
-            LoadParentData();
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
+            if (txt_GuardianID.Text.Length == 6 && parentInfo.GuardianIDExists(txt_GuardianID.Text)) {
+                LoadReport();
+                LoadParentData();
+            } else {
+                WPFMessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
+                txt_GuardianID.Focus();
+            }
         }
 
-        private void btn_CurrentMonthReport_Click(object sender, RoutedEventArgs e) { 
-            ParentInfoDB parentInfo = new ParentInfoDB();
+        private void btn_CurrentMonthReport_Click(object sender, RoutedEventArgs e) {
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
             String fromDate, toDate;
+            Settings settings = new Settings();
             int fromMonth, fromYear, fromDay, toMonth, toYear, toDay;
 
-            if (txt_ParentID.Text.Length == 6 && parentInfo.GuardianIDExists(txt_ParentID.Text)) {
-                fromDay = 20;
-                toDay = 19;
+            if (txt_GuardianID.Text.Length == 6 && parentInfo.GuardianIDExists(txt_GuardianID.Text)) {
+                fromDay = Convert.ToInt32(settings.BillingStartDate);
+                toDay = fromDay - 1;
 
                 if (DateTime.Now.Day < 20) { //previous month and this month
                     if (DateTime.Now.Month != 1) {
@@ -73,7 +112,7 @@ namespace AdminTools {
                     fromMonth = DateTime.Now.Month;
                     if (DateTime.Now.Month != 12) {
                         toYear = DateTime.Now.Year;
-                        toMonth = DateTime.Now.Month;
+                        toMonth = DateTime.Now.Month + 1;
                     } else {
                         toYear = DateTime.Now.Year + 1;
                         toMonth = 1;
@@ -82,11 +121,11 @@ namespace AdminTools {
                 fromDate = BuildDateString(fromYear, fromMonth, fromDay);
                 toDate = BuildDateString(toYear, toMonth, toDay);
 
-                BuildQuery(fromDate, toDate);
+                LoadReport(fromDate, toDate);
                 LoadParentData();
             } else {
-                MessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
-                txt_ParentID.Focus();
+                WPFMessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
+                txt_GuardianID.Focus();
             }
         }
 
@@ -96,7 +135,7 @@ namespace AdminTools {
             date = year + "-";
 
             if (month < 10) {
-                date += "0" + month;
+                date += "0" + month + "-";
             } else {
                 date += month + "-";
             }
@@ -109,93 +148,107 @@ namespace AdminTools {
         }
 
         private void btn_DateRangeReport_Click(object sender, RoutedEventArgs e) {
-            DateRangeReport();
+            DateTime dt;
+            if (DateTime.TryParse(dte_fromDate.Text, out dt) && DateTime.TryParse(dte_toDate.Text, out dt)) {
+                DateRangeReport();
+            } else {
+                WPFMessageBox.Show("Please enter valid dates!");
+            }
         }
 
         private void DateRangeReport() {
-            ParentInfoDB parentInfo = new ParentInfoDB();
-            String initialFrom = txt_FromDate.Text;
-            String initialTo = txt_ToDate.Text;
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
+            String initialFrom = Convert.ToDateTime(dte_fromDate.Text).ToString("dd/MM/yyyy");
+            String initialTo = Convert.ToDateTime(dte_toDate.Text).ToString("dd/MM/yyyy");
             if (initialFrom.Length >= 10 && initialTo.Length >= 10) {
                 initialFrom = initialFrom.Substring(0, 10);
                 initialTo = initialTo.Substring(0, 10);
             }
 
             if (initialFrom.Length == 10 && initialTo.Length == 10) {
-                if (txt_ParentID.Text.Length == 6 && parentInfo.GuardianIDExists(txt_ParentID.Text)) {
+                if (txt_GuardianID.Text.Length == 6 && parentInfo.GuardianIDExists(txt_GuardianID.Text)) {
                     String[] fromParts = initialFrom.Split('/');
                     String[] toParts = initialTo.Split('/');
 
-                    String fromDate = fromParts[2] + "-" + fromParts[0] + "-" + fromParts[1];
-                    String toDate = toParts[2] + "-" + toParts[0] + "-" + toParts[1];
+                    if (fromParts.Length == 3 && toParts.Length == 3) {
+                        String fromDate = fromParts[2] + "-" + fromParts[1] + "-" + fromParts[0];
+                        String toDate = toParts[2] + "-" + toParts[1] + "-" + toParts[0];
 
-                    BuildQuery(fromDate, toDate);
-                    LoadParentData();
+                        LoadReport(fromDate, toDate);
+                        LoadParentData();
+                    } else {
+                        WPFMessageBox.Show("You must enter a valid date range!");
+                        dte_fromDate.Focus();
+                    }
                 } else {
-                    MessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
-                    txt_ParentID.Focus();
+                    WPFMessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
+                    txt_GuardianID.Focus();
                 }
             } else {
-                MessageBox.Show("You must enter a valid date range!");
-                txt_FromDate.Focus();
+                WPFMessageBox.Show("You must enter a valid date range!");
+                dte_fromDate.Focus();
             }
-        }
-
-        //builds a query based on passed in values
-        private void BuildQuery(String start, String end) { //idea for how to format the transaction price from: http://stackoverflow.com/questions/9149063/sqlite-format-number-with-2-decimal-places-always
-            string query = "SELECT strftime('%m-%d-%Y', ChildcareTransaction.TransactionDate) AS Date, Child.FirstName AS First, Child.LastName AS ";
-            query += "Last, EventData.EventName AS 'Event Type', time(ChildcareTransaction.CheckedIn) AS 'Check In', ";
-            query += "time(ChildcareTransaction.CheckedOut) AS 'Check Out', ";
-            query += "'$' || case WHEN substr(ChildcareTransaction.TransactionTotal, -2, 1) = '.' THEN ChildcareTransaction.TransactionTotal || ";
-            query += "'0' ELSE ChildcareTransaction.TransactionTotal END AS Total FROM AllowedConnections NATURAL JOIN Child ";
-            query += "NATURAL JOIN ChildcareTransaction NATURAL JOIN EventData WHERE AllowedConnections.Guardian_ID = " + txt_ParentID.Text + " ";
-            query += "AND ChildcareTransaction.TransactionDate BETWEEN '" + start + "' AND '" + end + "';";
-
-            LoadReport(query);
-        }
-
-        //builds a query string to show all charges
-        private void BuildQuery() {
-            string query = "SELECT strftime('%m/%d/%Y', ChildcareTransaction.TransactionDate) AS 'Date', Child.FirstName AS First, Child.LastName AS ";
-            query += "Last, EventData.EventName AS 'Event Type', time(ChildcareTransaction.CheckedIn) AS 'Check In', ";
-            query += "time(ChildcareTransaction.CheckedOut) AS 'Check Out', ";
-            query += "'$' || case WHEN substr(ChildcareTransaction.TransactionTotal, -2, 1) = '.' THEN ChildcareTransaction.TransactionTotal || ";
-            query += "'0' ELSE ChildcareTransaction.TransactionTotal END AS Total FROM AllowedConnections NATURAL JOIN Child ";
-            query += "NATURAL JOIN ChildcareTransaction NATURAL JOIN EventData WHERE AllowedConnections.Guardian_ID = " + txt_ParentID.Text + ";";
-
-            LoadReport(query);
         }
 
         //Loads the information for the parent on to the side of the window
         private void LoadParentData() {
-            ParentInfoDB parentInfo = new ParentInfoDB();
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
 
-            cnv_ParentIcon.Background = new ImageBrush(new BitmapImage(new Uri(parentInfo.GetPhotoPath(txt_ParentID.Text), UriKind.Relative)));
-            lbl_Name.Content = parentInfo.GetParentName(txt_ParentID.Text);
-            lbl_Address1.Content = parentInfo.GetAddress1(txt_ParentID.Text);
-            lbl_Address2.Content = parentInfo.GetAddress2(txt_ParentID.Text);
-            lbl_Address3.Content = parentInfo.GetAddress3(txt_ParentID.Text);
-            lbl_Phone.Content = parentInfo.GetPhoneNumber(txt_ParentID.Text);
-            UpdateCurDue(txt_ParentID.Text);
-        }
-
-        private void btn_MakePayment_Click(object sender, RoutedEventArgs e) {
-            ParentInfoDB parentinfo = new ParentInfoDB();
-
-            if (txt_ParentID.Text.Length == 6 && parentinfo.GuardianIDExists(txt_ParentID.Text)) {
-                PaymentEntry paymentEntry = new PaymentEntry(txt_ParentID.Text, this);
-                paymentEntry.Show();
+            if (File.Exists(parentInfo.GetPhotoPath(txt_GuardianID.Text))) {
+                cnv_ParentIcon.Background = new ImageBrush(new BitmapImage(new Uri(parentInfo.GetPhotoPath(txt_GuardianID.Text), UriKind.Relative)));
             } else {
-                MessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
-                txt_ParentID.Focus();
+                cnv_ParentIcon.Background = new ImageBrush(new BitmapImage(new Uri(@"" + "C:/Users/Public/Documents" + "/Childcare Application/Pictures/default.jpg", UriKind.Relative)));
             }
-            
+            lbl_Name.Content = parentInfo.GetParentName(txt_GuardianID.Text);
+            lbl_Address1.Content = parentInfo.GetAddress1(txt_GuardianID.Text);
+            lbl_Address2.Content = parentInfo.GetAddress2(txt_GuardianID.Text);
+            lbl_Address3.Content = parentInfo.GetAddress3(txt_GuardianID.Text);
+            lbl_Phone.Content = parentInfo.GetPhoneNumber(txt_GuardianID.Text);
+            UpdateRegularDue(txt_GuardianID.Text);
+            UpdateCampDue(txt_GuardianID.Text);
+            UpdateMiscDue(txt_GuardianID.Text);
         }
 
-        public void UpdateCurDue(String parentID) {
-            ParentInfoDB parentInfo = new ParentInfoDB();
+        private void btn_RegularPayment_Click(object sender, RoutedEventArgs e) {
+            SubmitPayment("Regular");
+        }
 
-            lbl_CurrentDueValue.Content = parentInfo.GetCurrentDue(txt_ParentID.Text);
+        private void btn_CampPayment_Click(object sender, RoutedEventArgs e) {
+            SubmitPayment("Camp");
+        }
+
+        private void btn_MiscPayment_Click(object sender, RoutedEventArgs e) {
+            SubmitPayment("Misc");
+        }
+
+        private void SubmitPayment(string type) {
+            GuardianInfoDB parentinfo = new GuardianInfoDB();
+
+            if (txt_GuardianID.Text.Length == 6 && parentinfo.GuardianIDExists(txt_GuardianID.Text)) {
+                PaymentEntry paymentEntry = new PaymentEntry(txt_GuardianID.Text, this, type);
+                paymentEntry.ShowDialog();
+            } else {
+                WPFMessageBox.Show("The Parent ID you entered does not exist in the database.  Please verify it is correct.");
+                txt_GuardianID.Focus();
+            }
+        }
+
+        public void UpdateRegularDue(String parentID) {
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
+
+            lbl_RegularDueValue.Content = parentInfo.GetCurrentDue(txt_GuardianID.Text, "Regular");
+        }
+
+        public void UpdateCampDue(String parentID) {
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
+
+            lbl_CampDueValue.Content = parentInfo.GetCurrentDue(txt_GuardianID.Text, "Camp");
+        }
+
+        public void UpdateMiscDue(String parentID) {
+            GuardianInfoDB parentInfo = new GuardianInfoDB();
+
+            lbl_MiscDueValue.Content = parentInfo.GetCurrentDue(txt_GuardianID.Text, "Misc");
         }
 
         private void btn_Exit_Click(object sender, RoutedEventArgs e) {
@@ -204,13 +257,48 @@ namespace AdminTools {
 
         private void txt_FromDate_KeyDown(object sender, KeyEventArgs e) {
             if (e.Key == Key.Enter) {
-                txt_ToDate.Focus();
+                dte_toDate.Focus();
             }
         }
 
         private void txt_ToDate_KeyDown(object sender, KeyEventArgs e) {
             if (e.Key == Key.Enter) {
                 DateRangeReport();
+            }
+        }
+
+        private void txt_GuardianID_GotFocus(object sender, RoutedEventArgs e) {
+            Dispatcher.BeginInvoke((Action)txt_GuardianID.SelectAll);
+        }
+
+        private void btn_Print_Click(object sender, RoutedEventArgs e) {
+            if (this.reportLoaded && this.table.Rows.Count > 0) {
+                PrintDialog printDialog = new PrintDialog();
+                printDialog.UserPageRangeEnabled = true;
+
+                if (printDialog.ShowDialog() == true) {
+                    var paginator = new ReportsPaginator(this.table.Rows.Count, this.table,
+                      new Size(printDialog.PrintableAreaWidth, printDialog.PrintableAreaHeight));
+
+                    printDialog.PrintDocument(paginator, "Parent Report Data Table");
+                }
+            } else {
+                WPFMessageBox.Show("You must load a report before you can print one!");
+            }
+        }
+
+        private void WindowMouseDown(object sender, MouseButtonEventArgs e) {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
+
+        private void btn_Save_Click(object sender, RoutedEventArgs e) {
+            if (this.reportLoaded && this.table.Rows.Count > 0) {
+                PDFCreator pdfCreator = new PDFCreator(this.table);
+                PdfDocument pdf = pdfCreator.CreatePDF(this.parentDataGrid.Columns.Count);
+                pdfCreator.SavePDF(pdf);
+            } else {
+                WPFMessageBox.Show("You must load a report before you can save one!");
             }
         }
     }
